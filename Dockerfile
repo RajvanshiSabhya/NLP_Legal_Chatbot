@@ -49,5 +49,5 @@ RUN python -c "from transformers import AutoTokenizer, AutoModelForSequenceClass
     AutoTokenizer.from_pretrained('deepset/roberta-base-squad2'); \
     AutoModelForQuestionAnswering.from_pretrained('deepset/roberta-base-squad2')"
 
-# Start the application using a shell to handle the $PORT environment variable
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-7860}
+# Start the application using python to leverage the programmatic port handling in main.py
+CMD ["python", "main.py"]
