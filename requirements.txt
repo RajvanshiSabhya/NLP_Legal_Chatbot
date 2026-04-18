@@ -1,0 +1,13 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+PyMuPDF
+sentence-transformers
+faiss-cpu
+transformers
+torch
+fastapi
+uvicorn
+pydantic
+scikit-learn
+python-multipart
+sentencepiece
+rank-bm25

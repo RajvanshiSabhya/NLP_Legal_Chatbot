@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.faiss
+data.json
+embeddings/
+.cache/
+models/
