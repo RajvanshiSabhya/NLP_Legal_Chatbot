@@ -80,54 +80,79 @@ def extract_metadata_from_filename(filename: str) -> Dict:
         "document_type": "PDF"
     }
 
+def detect_document_type(text: str) -> str:
+    """Detects if the document is an 'Act/Statute' or a 'Court Judgment'."""
+    judgment_keywords = ["judgment", "petitioner", "respondent", "versus", "appeal", "high court", "supreme court"]
+    statute_keywords = ["act", "section", "chapter", "preamble", "gazette"]
+    
+    text_lower = text[:2000].lower()
+    judgment_score = sum(1 for kw in judgment_keywords if kw in text_lower)
+    statute_score = sum(1 for kw in statute_keywords if kw in text_lower)
+    
+    return "JUDGMENT" if judgment_score >= statute_score else "STATUTE"
+
+def extract_legal_entities(text: str) -> Dict:
+    """Extracts case names or section numbers as high-priority metadata."""
+    case_match = re.search(r'(?:Judgment in|In the matter of)\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+vs\.?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)', text)
+    section_match = re.search(r'Section\s*(\d+[A-Z]?)', text, re.IGNORECASE)
+    
+    return {
+        "case_name": case_match.group(1) if case_match else "Unknown",
+        "section_hint": section_match.group(1) if section_match else "Unknown"
+    }
+
 def process_pdfs(path: str) -> List[Dict]:
-    """Loads PDFs using structure-aware block extraction."""
-    logger.info(f"Processing path: {path}")
+    """Loads PDFs with advanced legal structure awareness."""
+    logger.info(f"Processing legal documents at: {path}")
     processed_data = []
     
     if not os.path.exists(path):
-        logger.warning(f"Path {path} does not exist.")
         return processed_data
         
     filepaths = []
     if os.path.isdir(path):
-        for filename in os.listdir(path):
-            if filename.lower().endswith(".pdf"):
-                filepaths.append(os.path.join(path, filename))
-    elif os.path.isfile(path) and path.lower().endswith(".pdf"):
-        filepaths.append(path)
-    else:
-        logger.warning(f"Path {path} is neither a directory nor a PDF file.")
-        return processed_data
-        
+        filepaths = [os.path.join(path, f) for f in os.listdir(path) if f.lower().endswith(".pdf")]
+    elif path.lower().endswith(".pdf"):
+        filepaths = [path]
+    
     for filepath in filepaths:
         filename = os.path.basename(filepath)
-        logger.info(f"Reading {filepath} with structure-aware extraction")
         try:
             doc = fitz.open(filepath)
+            full_text = ""
             all_blocks = []
             for page in doc:
-                # get_text("blocks") returns a list of (x0, y0, x1, y1, "text", block_no, block_type)
                 blocks = page.get_text("blocks")
                 all_blocks.extend(blocks)
+                full_text += page.get_text()
             doc.close()
             
-            # Use logical blocks to create chunks
+            # 1. Detect Document Type
+            doc_type = detect_document_type(full_text)
+            logger.info(f"Detected {doc_type} for {filename}")
+            
+            # 2. Extract Metadata
+            base_meta = extract_metadata_from_filename(filename)
+            base_meta["doc_type"] = doc_type
+            
+            # 3. Create Semantic Chunks
             chunks = chunk_blocks(all_blocks, max_chunk_size=400)
-            metadata = extract_metadata_from_filename(filename)
             
             for i, chunk in enumerate(chunks):
-                meta = metadata.copy()
+                clean_chunk = clean_text(chunk)
+                entities = extract_legal_entities(clean_chunk)
+                
+                meta = base_meta.copy()
+                meta.update(entities)
                 meta["chunk_id"] = i
-                meta["section_hint"] = extract_section_hint(chunk)
+                
                 processed_data.append({
-                    "text": clean_text(chunk),
+                    "text": clean_chunk,
                     "metadata": meta
                 })
         except Exception as e:
             logger.error(f"Failed to process {filename}: {e}")
                 
-    logger.info(f"Total structured chunks created: {len(processed_data)}")
     return processed_data
 
 if __name__ == "__main__":
